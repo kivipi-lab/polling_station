@@ -551,4 +551,169 @@
                                 </div>
                             `).join('')}
                         </div>
-                        <button
+                        <button onclick="submitVote('${poll.id}')" class="btn btn-primary" style="margin-top: 15px;">Submit Vote</button>
+                        <div class="poll-results">
+                            <h4>Results (${pollVotes.length} total votes)</h4>
+                            ${voteCounts.map(option => {
+                                const percentage = pollVotes.length > 0 ? (option.count / pollVotes.length * 100).toFixed(1) : 0;
+                                return `
+                                    <div class="result-bar">
+                                        <div class="result-label">${option.text}</div>
+                                        <div class="result-progress">
+                                            <div class="result-fill" style="width: ${percentage}%"></div>
+                                        </div>
+                                        <div class="result-count">${option.count} (${percentage}%)</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function selectOption(pollId, optionId) {
+            selectedOptions[pollId] = optionId;
+            const optionsContainer = document.getElementById(`options-${pollId}`);
+            optionsContainer.querySelectorAll('.voting-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            event.target.closest('.voting-option').classList.add('selected');
+        }
+
+        function submitVote(pollId) {
+            const selectedOptionId = selectedOptions[pollId];
+            if (selectedOptionId === undefined) {
+                alert('Please select an option before voting.');
+                return;
+            }
+
+            const voterName = document.getElementById(`voter-name-${pollId}`).value.trim() || 'Anonymous';
+            const vote = {
+                id: Date.now().toString(),
+                pollId,
+                optionId: selectedOptionId,
+                voterName,
+                timestamp: new Date().toISOString()
+            };
+
+            votes.push(vote);
+            saveVotesToStorage();
+            delete selectedOptions[pollId];
+            document.getElementById(`voter-name-${pollId}`).value = '';
+
+            displayPolls();
+            updateAdminStats();
+            alert('Vote submitted successfully!');
+        }
+
+        function savePollsToStorage() {
+            localStorage.setItem('pollhub_polls', JSON.stringify(polls));
+        }
+
+        function saveVotesToStorage() {
+            localStorage.setItem('pollhub_votes', JSON.stringify(votes));
+        }
+
+        function adminLogin() {
+            const password = document.getElementById('admin-password-input').value;
+            if (password === 'admin123') {
+                document.getElementById('admin-login').style.display = 'none';
+                document.getElementById('admin-panel').style.display = 'block';
+                document.getElementById('create-tab-button').style.display = 'block';
+                updateAdminView();
+            } else {
+                alert('Incorrect password.');
+            }
+        }
+
+        function adminLogout() {
+            document.getElementById('admin-login').style.display = 'block';
+            document.getElementById('admin-panel').style.display = 'none';
+            document.getElementById('admin-password-input').value = '';
+            document.getElementById('create-tab-button').style.display = 'none';
+            document.getElementById('create-tab').classList.remove('active');
+            switchToTab('vote');
+        }
+
+        function updateAdminStats() {
+            const totalPolls = polls.length;
+            const totalVotes = votes.length;
+            const totalVoters = new Set(votes.map(vote => vote.voterName)).size;
+            const statsContainer = document.getElementById('admin-stats');
+            statsContainer.innerHTML = `
+                <div class="stat-card"><div class="stat-value">${totalPolls}</div><div class="stat-label">Total Polls</div></div>
+                <div class="stat-card"><div class="stat-value">${totalVotes}</div><div class="stat-label">Total Votes</div></div>
+                <div class="stat-card"><div class="stat-value">${totalVoters}</div><div class="stat-label">Unique Voters</div></div>
+            `;
+        }
+
+        function updateAdminView() {
+            updateAdminStats();
+            const adminPollsContainer = document.getElementById('admin-polls');
+            adminPollsContainer.innerHTML = `
+                <h3 style="margin-bottom: 20px; color: #2c3e50;">Detailed Poll Results</h3>
+                ${polls.map(poll => {
+                    const pollVotes = votes.filter(vote => vote.pollId === poll.id);
+                    const voteCounts = poll.options.map(option => ({
+                        ...option,
+                        count: pollVotes.filter(vote => vote.optionId === option.id).length,
+                        voters: pollVotes.filter(vote => vote.optionId === option.id).map(vote => vote.voterName)
+                    }));
+                    return `
+                        <div class="poll-card">
+                            <h4>${poll.title}</h4>
+                            <p><strong>Created:</strong> ${new Date(poll.createdAt).toLocaleString()}</p>
+                            <p><strong>Total Votes:</strong> ${pollVotes.length}</p>
+                            ${voteCounts.map(option => `
+                                <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                                    <strong>${option.text}:</strong> ${option.count} votes
+                                    ${option.voters.length > 0 ? `<br><small>Voters: ${option.voters.join(', ')}</small>` : ''}
+                                </div>
+                            `).join('')}
+                            <button onclick="deletePoll('${poll.id}')" class="btn btn-danger" style="margin-top: 10px;">Delete Poll</button>
+                        </div>
+                    `;
+                }).join('')}
+            `;
+        }
+
+        function deletePoll(pollId) {
+            if (confirm('Are you sure you want to delete this poll? This action cannot be undone.')) {
+                polls = polls.filter(poll => poll.id !== pollId);
+                votes = votes.filter(vote => vote.pollId !== pollId);
+                savePollsToStorage();
+                saveVotesToStorage();
+                displayPolls();
+                updateAdminView();
+            }
+        }
+
+        function exportData() {
+            const data = { polls, votes, exportedAt: new Date().toISOString() };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pollhub-data-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear ALL data? This action cannot be undone.')) {
+                polls = [];
+                votes = [];
+                selectedOptions = {};
+                localStorage.removeItem('pollhub_polls');
+                localStorage.removeItem('pollhub_votes');
+                displayPolls();
+                updateAdminView();
+                alert('All data has been cleared.');
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
