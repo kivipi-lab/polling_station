@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stateless Poll</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        #app {
+            max-width: 700px;
+            width: 100%;
+            background: #fff;
+            padding: 25px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #2c3e50;
+        }
+        input[type="text"],
+        input[type="datetime-local"],
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #add-option {
+            background-color: #2ecc71;
+            margin-right: 10px;
+        }
+        #add-option:hover {
+            background-color: #27ae60;
+        }
+        .option-container, .vote-options div {
+            margin-bottom: 10px;
+        }
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .results-table th, .results-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        .results-table th {
+            background-color: #ecf0f1;
+        }
+        .voter-name {
+            display: inline-block;
+            background-color: #e0eaf0;
+            color: #333;
+            padding: 3px 8px;
+            border-radius: 12px;
+            margin: 2px;
+            font-size: 0.9em;
+        }
+        .share-box {
+            background-color: #fffbe6;
+            border: 1px solid #ffe58f;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+        .share-box input {
+            width: 100%;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app"></div>
+
+    <script>
+        const app = document.getElementById('app');
+
+        // --- DATA HANDLING ---
+        // Functions to encode and decode poll data into the URL hash
+        
+        function encodeData(data) {
+            const jsonString = JSON.stringify(data);
+            return btoa(encodeURIComponent(jsonString));
+        }
+
+        function decodeData() {
+            try {
+                const hash = window.location.hash.substring(1);
+                if (!hash) return null;
+                const jsonString = decodeURIComponent(atob(hash));
+                return JSON.parse(jsonString);
+            } catch (error) {
+                console.error("Could not parse data from URL:", error);
+                return null;
+            }
+        }
+
+        // --- RENDERING VIEWS ---
+        // Functions to display different parts of the application
+
+        function renderCreatePollView() {
+            app.innerHTML = `
+                <h1>Create a New Poll</h1>
+                <p>Fill out the details below to create your poll. A shareable link will be generated for you.</p>
+                <form id="create-poll-form">
+                    <label for="title">Poll Title</label>
+                    <input type="text" id="title" placeholder="e.g., Team Lunch" required>
+                    
+                    <label for="description">Description</label>
+                    <textarea id="description" placeholder="e.g., Deciding on a day for our team lunch next week."></textarea>
+                    
+                    <label>Date/Time Options</label>
+                    <div id="options-container">
+                        <div class="option-container"><input type="datetime-local" class="option" required></div>
+                        <div class="option-container"><input type="datetime-local" class="option" required></div>
+                    </div>
+                    
+                    <button type="button" id="add-option">Add Option</button>
+                    <button type="submit">Create Poll & Get Link</button>
+                </form>
+            `;
+
+            document.getElementById('add-option').addEventListener('click', () => {
+                const container = document.getElementById('options-container');
+                const newOption = document.createElement('div');
+                newOption.className = 'option-container';
+                newOption.innerHTML = '<input type="datetime-local" class="option" required>';
+                container.appendChild(newOption);
+            });
+
+            document.getElementById('create-poll-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const pollData = {
+                    title: document.getElementById('title').value,
+                    description: document.getElementById('description').value,
+                    options: Array.from(document.querySelectorAll('.option')).map((input, index) => ({
+                        id: index,
+                        datetime: input.value
+                    })),
+                    votes: []
+                };
+                window.location.hash = encodeData(pollData);
+                // The router will automatically pick up the hash change and render the poll view.
+            });
+        }
+
+        function renderPollView(pollData) {
+            app.innerHTML = `
+                <h2>${pollData.title}</h2>
+                <p>${pollData.description || ''}</p>
+                <form id="vote-form">
+                    <label for="voter-name">Your Name</label>
+                    <input type="text" id="voter-name" placeholder="Enter your name" required>
+                    
+                    <p><strong>Select all times that work for you:</strong></p>
+                    <div class="vote-options">
+                        ${pollData.options.map(option => `
+                            <div>
+                                <input type="checkbox" id="option-${option.id}" value="${option.id}">
+                                <label for="option-${option.id}">${new Date(option.datetime).toLocaleString()}</label>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button type="submit">Submit Vote</button>
+                </form>
+                <hr>
+                ${renderResults(pollData)}
+            `;
+            
+            document.getElementById('vote-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('voter-name').value;
+                const selectedOptionIds = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(cb => parseInt(cb.value));
+
+                // Add the new vote
+                pollData.votes.push({ name, selectedOptions: selectedOptionIds });
+
+                // Update the URL hash with the new data
+                window.location.hash = encodeData(pollData);
+
+                // Show a confirmation and instructions
+                app.innerHTML += `
+                    <div class="share-box">
+                        <h3>✅ Vote Submitted!</h3>
+                        <p><strong>IMPORTANT:</strong> To share your vote with others, please copy and share the new URL from your browser's address bar.</p>
+                    </div>
+                `;
+            });
+        }
+
+        function renderResults(pollData) {
+            // Tally the votes
+            const voteCounts = {};
+            pollData.options.forEach(option => {
+                voteCounts[option.id] = [];
+            });
+            pollData.votes.forEach(vote => {
+                vote.selectedOptions.forEach(optionId => {
+                    if (voteCounts[optionId]) {
+                        voteCounts[optionId].push(vote.name);
+                    }
+                });
+            });
+
+            return `
+                <h3>Current Results</h3>
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Option</th>
+                            <th>Votes (${pollData.votes.length})</th>
+                            <th>Who Voted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pollData.options.map(option => `
+                            <tr>
+                                <td>${new Date(option.datetime).toLocaleString()}</td>
+                                <td>${voteCounts[option.id].length}</td>
+                                <td>
+                                    ${voteCounts[option.id].map(name => `<span class="voter-name">${name}</span>`).join('')}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+
+        // --- ROUTER ---
+        // Determines which view to show based on the URL hash
+
+        function router() {
+            const data = decodeData();
+            if (data) {
+                renderPollView(data);
+            } else {
+                renderCreatePollView();
+            }
+        }
+
+        // --- INITIALIZATION ---
+        // Listen for hash changes and load the initial view
+        
+        window.addEventListener('hashchange', router);
+        window.addEventListener('DOMContentLoaded', router);
+
+    </script>
+</body>
+</html>
